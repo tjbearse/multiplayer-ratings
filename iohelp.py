@@ -14,3 +14,6 @@ def openOrDefault(path:Path|None, mode, default, dashed=None):
 
 def debug(*args, **kwargs):
 	print(*args, file=sys.stderr, **kwargs)
+
+def error(*args, **kwargs):
+	print('error:', *args, file=sys.stderr, **kwargs)

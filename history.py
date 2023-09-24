@@ -6,9 +6,10 @@ import argparse
 import csv
 import sys
 import os
+import io
 from typing import Iterable, TypeVar, Iterator
 
-from iohelp import debug, openOrDefault
+from iohelp import debug, openOrDefault, error
 from freeForAll import rateFFA, Rating, PlayerRatings, GameResult, MU
 
 
@@ -31,21 +32,25 @@ class HistoryRow:
 		)
 
 HistoryRow_fields = [f.name for f in dataclasses.fields(HistoryRow)]
+
 """
 history add -i [history] [game...] -> [history]
 
 File format
 
 HISTORY
-Player, GameID, Rank, NewRatingMu, NewRatingSigma
+player, gameID, rank, newRatingMu, newRatingSigma
 
 GAME -- separate games by file or blank line (no header)
 Rank,Player
 """
 def addToHistory(args):
+	if args.inPlace and args.history is None:
+		error('option -i / --in-place requires a history file')
+		exit(1)
+
 	outFile = None
 	inFile = args.history
-
 	if args.inPlace:
 		newInFile = inFile.with_suffix(inFile.suffix + '.bak')
 		os.rename(inFile, newInFile)
@@ -54,8 +59,13 @@ def addToHistory(args):
 	with openOrDefault(outFile, 'w', sys.stdout) as fo:
 		writer = csv.DictWriter(fo, fieldnames=HistoryRow_fields)
 		writer.writeheader()
-		with open(inFile, 'r') as fi:
-			ranks, nextGameId = processHistory(fi, lambda r: writer.writerow(r))
+
+		if inFile is not None:
+			with open(inFile, 'r') as fi:
+				ranks, nextGameId = processHistory(fi, lambda r: writer.writerow(r))
+		else:
+			ranks = dict()
+			nextGameId = 1
 
 		for fp in args.game:
 			with open(fp, 'r') as f:
@@ -150,11 +160,14 @@ history deltas [history] [player...]
 prints a summary of how each game effected a player's rating
 """
 def deltas(args):
+	#TODO also track ranking changes, e.g. +1/-1
 	muMap = defaultdict(lambda : MU)
-	if args.player is not None:
+	if args.player:
 		playerSelect = lambda p : p in args.player
+		playerJustify = max(map(len, args.player))
 	else:
 		playerSelect = lambda p: True
+		playerJustify = 15
 
 	with open(args.history, 'r') as f:
 		reader = csv.DictReader(f)
@@ -165,24 +178,31 @@ def deltas(args):
 			new = h.newRatingMu
 			old = muMap[h.player]
 			diff = new - old
-			print(f'{h.player.ljust(10, " ")} game {h.gameId} #{h.rank} => {diff:+10.4f}')
+			# FIXME simplify to csv format?
+			print(f'{h.player.ljust(playerJustify, " ")} game {h.gameId} #{h.rank} => {diff:+7.3f} = {new:6.3f}')
 			muMap[h.player] = new
 	
 def addUpdateHistoryArgs(parser:argparse.ArgumentParser):
 	parser.set_defaults(command=lambda _: parser.print_help())
 	sub = parser.add_subparsers()
 
-	p = sub.add_parser('add')
-	p.add_argument('history', type=Path)
-	p.add_argument('-i', '--in-place', default=False, dest='inPlace', action='store_true')
-	p.add_argument('game', nargs='+', type=Path)
+	historyFileHelp = 'a csv file detailing history of ratings. Has column headers: player, gameID, rank, newRatingMu, newRatingSigma'
+
+	addHelp = 'Appends game data to a rating history file.'
+	p = sub.add_parser('add', description=addHelp, help=addHelp)
+	p.add_argument('history', nargs='?', type=Path, help=historyFileHelp)
+	p.add_argument('-i', '--in-place', default=False, dest='inPlace', action='store_true', help='overwrite the history file rather than print to stdout. A backup of the original is made with .bak extension')
+	p.add_argument('game', nargs='+', type=Path, help='a file detailing game results in the form "<rank>,<player>". Games can be separated by newlines or passed as separate files')
 	p.set_defaults(command=addToHistory)
 
-	p = sub.add_parser('ranking')
-	p.add_argument('history', type=Path)
+	rankingHelp='Print the resulting ranks from a history file.'
+	rankingDesc='Print the resulting ranks from a history file. Output is a csv with header columns "rank,player,mu,sigma"'
+	p = sub.add_parser('ranking', description=rankingDesc, help=rankingHelp)
+	p.add_argument('history', type=Path, help=historyFileHelp)
 	p.set_defaults(command=compactHistory)
 
-	p = sub.add_parser('deltas')
-	p.add_argument('history', type=Path)
-	p.add_argument('player', nargs='*')
+	deltasHelp='Print the ratings changes over time'
+	p = sub.add_parser('deltas', description=deltasHelp, help=deltasHelp)
+	p.add_argument('history', type=Path, help=historyFileHelp)
+	p.add_argument('player', nargs='*', help='The names of players to show deltas for. Defaults to all players.')
 	p.set_defaults(command=deltas)
