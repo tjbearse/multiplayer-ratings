@@ -38,7 +38,6 @@ Player, Mu, Sigma
 Result:
 Rank, Player
 """
-# TODO restructure args to allow in place modification as in https://docs.python.org/3/library/fileinput.html
 def update(args):
 	with openOrDefault(args.ratingsIn, 'r', io.StringIO(), dashed=sys.stdin) as f:
 		ratings = ratingsFromCSV(f)

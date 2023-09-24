@@ -1,17 +1,6 @@
-import dataclasses
-from pathlib import Path
-from trueskill import Rating
 import argparse
-import csv
-import fileinput
-import io
-import sys
-import os
-from typing import Iterator
 
-from iohelp import debug, openOrDefault
-from history import addUpdateHistoryArgs, updateHistory
-from freeForAll import PlayerRatings, GameResult, qualityFFA, rateFFA
+from history import addUpdateHistoryArgs
 from rating import addUpdateArgs
 
 def makeParser():
